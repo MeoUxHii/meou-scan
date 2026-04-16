@@ -8,6 +8,11 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/icon16.png">
     <link rel="icon" type="image/png" sizes="128x128" href="/static/icons/icon128.png">
     <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/vn.js"></script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
     
@@ -40,24 +45,31 @@
             100% { opacity: 0; transform: translateY(-10px); filter: blur(5px); }
         }
         .loading-text-anim { animation: fadeCycle 3s infinite; }
+
+        .flatpickr-calendar {
+            background: #fff;
+            border-radius: 25px !important;
+            border: 2px solid #e0c3fc !important;
+            box-shadow: 0 15px 45px rgba(90, 84, 164, 0.2) !important;
+            width: 320px !important;
+        }
+        .flatpickr-day.selected { background: #a18cd1 !important; border-color: #a18cd1 !important; border-radius: 12px !important; }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8 text-slate-700 relative">
 
-    <!-- Alert Box -->
     <div id="meouAlert" class="hidden fixed top-10 left-1/2 -translate-x-1/2 z-[100] min-w-[320px] p-5 rounded-2xl shadow-2xl bg-meou-main text-white font-bold text-center animate-slide-in border border-white/30">
         <p id="alertMsg"></p>
     </div>
 
     <div class="max-w-7xl mx-auto bg-white/95 rounded-card shadow-[0_20px_50px_rgba(0,0,0,0.15)] p-8 md:p-12 border border-white/50">
         
-        <!-- Header -->
         <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-6">
             <div class="flex items-center gap-4">
                 <img src="/static/icons/icon64.png" class="w-14 h-14 rounded-2xl shadow-sm" alt="MeoU Logo">
                 <div>
                     <h1 class="text-5xl font-extrabold text-meou-dark tracking-tighter">MeoU Scan</h1>
-                    <p class="text-indigo-400 text-sm font-bold uppercase tracking-[0.3em] mt-1">Sản Phẩm Thuộc FFQ Team</p>
+                    <p class="text-indigo-400 text-sm font-bold uppercase tracking-[0.3em] mt-1">Một Sản Phẩm Thuộc FFQ Team</p>
                 </div>
             </div>
             <div class="flex gap-4">
@@ -65,20 +77,19 @@
                     Xuất Excel
                 </button>
                 <a href="/logout" class="bg-white/50 hover:bg-red-50 text-red-500 font-bold py-4 px-8 rounded-3xl shadow-sm border border-red-100 transition-all active:scale-95 text-lg">
-                    Thoát
+                    Đăng Xuất
                 </a>
             </div>
         </div>
 
-        <!-- Filters -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10 p-8 bg-indigo-50/50 rounded-[35px] border-2 border-dashed border-indigo-200">
             <div>
                 <label class="block text-sm font-bold text-meou-dark mb-3 px-2 uppercase tracking-wider">Ngày bắt đầu</label>
-                <input type="date" id="startDate" class="w-full p-4 rounded-2xl border-2 border-indigo-100 focus:border-indigo-400 outline-none text-base font-bold shadow-sm bg-white">
+                <input type="text" id="startDate" placeholder="Chọn ngày" class="w-full p-4 rounded-2xl border-2 border-indigo-100 focus:border-indigo-400 outline-none text-base font-bold shadow-sm bg-white">
             </div>
             <div>
                 <label class="block text-sm font-bold text-meou-dark mb-3 px-2 uppercase tracking-wider">Ngày kết thúc</label>
-                <input type="date" id="endDate" class="w-full p-4 rounded-2xl border-2 border-indigo-100 focus:border-indigo-400 outline-none text-base font-bold shadow-sm bg-white">
+                <input type="text" id="endDate" placeholder="Chọn ngày" class="w-full p-4 rounded-2xl border-2 border-indigo-100 focus:border-indigo-400 outline-none text-base font-bold shadow-sm bg-white">
             </div>
             <div class="flex items-end">
                 <button id="scanBtn" class="w-full bg-meou-main hover:brightness-110 text-white font-bold py-4 rounded-2xl shadow-lg transition-all active:scale-95 text-xl tracking-widest uppercase">
@@ -87,14 +98,12 @@
             </div>
         </div>
         
-        <textarea id="linksInput" rows="1" class="w-full p-5 border-2 border-indigo-50 rounded-2xl focus:border-indigo-300 mb-8 shadow-inner text-base outline-none font-bold placeholder:text-slate-400 bg-slate-50/50" placeholder="Dán link kênh hoặc video lẻ vào đây..."></textarea>
+        <textarea id="linksInput" rows="1" class="w-full p-5 border-2 border-indigo-50 rounded-2xl focus:border-indigo-300 mb-8 shadow-inner text-base outline-none font-bold placeholder:text-slate-400 bg-slate-50/50" placeholder="Dán link kênh vào đây. Lưu ý đúng định dạng (https://www.youtube.com/@MixiGaming3con)"></textarea>
 
-        <!-- Loading State -->
         <div id="loading" class="hidden text-center my-8 text-indigo-500 font-bold text-xl h-10">
             <p id="loadingText" class="loading-text-anim"></p>
         </div>
 
-        <!-- Table -->
         <div class="overflow-hidden rounded-[35px] border border-indigo-100 shadow-xl bg-white">
             <table class="w-full border-collapse table-fixed">
                 <thead>
@@ -103,7 +112,7 @@
                         <th class="w-[28%] p-5 text-left px-8 border-r border-white/20 uppercase tracking-tighter">YouTube Link</th>
                         <th class="w-[10%] p-5 text-center border-r border-white/20">Loại</th>
                         <th class="w-[10%] p-5 text-center border-r border-white/20 uppercase">Giỏ hàng</th>
-                        <th class="w-[40%] p-5 text-center">Chi tiết Link (Shopee/Lazada)</th>
+                        <th class="w-[40%] p-5 text-center">Chi tiết Link</th>
                     </tr>
                 </thead>
                 <tbody id="resultTableBody" class="font-bold text-slate-700 text-base">
@@ -115,14 +124,11 @@
     <script>
         let currentData = { results: [], channel_name: "MeoU" };
         let loadingInterval;
-        const loadingMessages = [
-            "Đang rà soát dữ liệu...",
-            "Đang đấm nhau với mã nguồn...",
-            "Đang hồi phục do bại trận...",
-            "Đang thương lượng với Google...",
-            "Đang đấm nhau vì không thương lượng được...",
-            "Đang đóng gói dữ liệu..."
-        ];
+        const loadingMessages = ["Đang Rà Soát Dữ Liệu...🙄🤏", "Đang Đấm Nhau Với Mã Nguồn...🤛😠", "Ớ ~ ~ ~ ~ 😵‍💫 Thua Rồi...", "Đang Thương Lượng Với Google...😑🤝", "Lại Đấm Nhau Vì Không Thương Lượng Được...🤬", "Đang Liên Hệ Với Yang Hồ...🤙😤"];
+
+        const fpkConfig = { locale: "vn", dateFormat: "Y-m-d", altInput: true, altFormat: "d/m/Y", maxDate: "today", disableMobile: "true" };
+        const startPicker = flatpickr("#startDate", { ...fpkConfig, onChange: (d, str) => endPicker.set("minDate", str) });
+        const endPicker = flatpickr("#endDate", fpkConfig);
 
         function showMeoUAlert(message) {
             const alertBox = document.getElementById('meouAlert');
@@ -133,19 +139,21 @@
 
         document.getElementById('scanBtn').addEventListener('click', async () => {
             const urls = document.getElementById('linksInput').value.split('\n').map(u => u.trim()).filter(u => u !== '');
-            const startDateInput = document.getElementById('startDate').value;
-            const endDateInput = document.getElementById('endDate').value;
+            const startV = document.getElementById('startDate').value;
+            const endV = document.getElementById('endDate').value;
             
-            if (!startDateInput || !endDateInput) return showMeoUAlert('Vui lòng chọn đầy đủ ngày bắt đầu và kết thúc.');
+            if (!startV || !endV) return showMeoUAlert('Vui lòng chọn đầy đủ ngày bắt đầu và kết thúc.');
+            
+            const diff = Math.ceil(Math.abs(new Date(endV) - new Date(startV)) / (1000 * 60 * 60 * 24));
+            if (diff > 60) return showMeoUAlert('Chỉ quét được tối đa 60 ngày thui nha!');
+            
             if (urls.length === 0) return showMeoUAlert('Bạn chưa dán link YouTube cần quét.');
 
             const loadingDiv = document.getElementById('loading');
             const loadingText = document.getElementById('loadingText');
             loadingDiv.classList.remove('hidden');
-            
             let msgIndex = 0;
             loadingText.innerText = loadingMessages[msgIndex];
-            
             if (loadingInterval) clearInterval(loadingInterval);
             loadingInterval = setInterval(() => {
                 msgIndex = (msgIndex + 1) % loadingMessages.length;
@@ -159,7 +167,7 @@
                 const response = await fetch('/api/scan', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ urls, startDate: startDateInput, endDate: endDateInput })
+                    body: JSON.stringify({ urls, startDate: startV, endDate: endV })
                 });
 
                 currentData = await response.json();
@@ -170,138 +178,59 @@
                     currentData.results.forEach(res => {
                         const tr = document.createElement('tr');
                         tr.className = "border-b border-indigo-50 hover:bg-indigo-50/20 transition-all";
-                        
                         let typeColor = res.type === 'Short' ? 'text-pink-500' : (res.type === 'Stream' ? 'text-indigo-500' : 'text-blue-500');
                         let statusHtml = res.has_shopping ? '<span class="text-emerald-500 font-extrabold text-lg">CÓ</span>' : '<span class="text-slate-300">KHÔNG</span>';
-                        
                         let linksHtml = '';
                         if (res.has_shopping) {
                             let targetLinks = res.shopping_links.filter(item => item.platform === 'Shopee' || item.platform === 'Lazada');
-                            
                             if (targetLinks.length > 0) {
                                 const listItems = targetLinks.map(item => {
                                     let badgeColor = item.platform === 'Shopee' ? 'text-orange-500 bg-orange-50 border-orange-200' : 'text-blue-600 bg-blue-50 border-blue-200';
-                                    return `
-                                    <li class="mb-2 text-[13px] border-b border-indigo-50 pb-2 flex items-center gap-2">
-                                        <span class="font-extrabold text-[10px] uppercase px-2 py-1 rounded border ${badgeColor}">${item.platform}</span>
-                                        <a href="${item.clean_url}" target="_blank" class="text-indigo-600 hover:text-indigo-800 truncate block w-full" title="${item.clean_url}">${item.clean_url}</a>
-                                    </li>`;
+                                    return `<li class="mb-2 text-[13px] border-b border-indigo-50 pb-2 flex items-center gap-2"><span class="font-extrabold text-[10px] uppercase px-2 py-1 rounded border ${badgeColor}">${item.platform}</span><a href="${item.clean_url}" target="_blank" class="text-indigo-600 hover:text-indigo-800 truncate block w-full">${item.clean_url}</a></li>`;
                                 }).join('');
                                 linksHtml = `<div class="px-6 py-2"><button class="toggle-btn w-full bg-indigo-50 text-indigo-600 font-extrabold py-3 px-4 rounded-2xl border border-indigo-100 text-xs hover:bg-white transition-all shadow-sm">Giỏ hàng: ${targetLinks.length} SP ▼</button><ul class="link-list hidden mt-3 p-5 bg-white rounded-2xl border border-indigo-100 text-left custom-scrollbar overflow-y-auto max-h-48 shadow-xl text-slate-600">${listItems}</ul></div>`;
-                            } else {
-                                linksHtml = `<span class="text-slate-400 text-sm italic font-medium">Có ${res.other_count} SP (Sàn khác)</span>`;
-                            }
-                        } else { 
-                            linksHtml = '<span class="text-slate-400 text-sm italic font-medium">Trống</span>'; 
-                        }
+                            } else { linksHtml = `<span class="text-slate-400 text-sm italic font-medium">Có ${res.other_count} SP (Sàn khác)</span>`; }
+                        } else { linksHtml = '<span class="text-slate-400 text-sm italic font-medium">Trống</span>'; }
 
-                        tr.innerHTML = `
-                            <td class="text-center text-sm text-slate-500 border-r border-indigo-50">${res.display_date}</td>
-                            <td class="text-sm px-8 truncate border-r border-indigo-50 italic text-slate-400 font-medium"><a href="${res.url}" target="_blank" class="hover:text-indigo-600">${res.url}</a></td>
-                            <td class="text-center border-r border-indigo-50 text-xs uppercase font-black ${typeColor}">${res.type}</td>
-                            <td class="text-center text-sm border-r border-indigo-50">${statusHtml}</td>
-                            <td class="text-center w-full max-w-full">${linksHtml}</td>
-                        `;
+                        tr.innerHTML = `<td class="text-center text-sm text-slate-500 border-r border-indigo-50">${res.display_date}</td><td class="text-sm px-8 truncate border-r border-indigo-50 italic text-slate-400 font-medium"><a href="${res.url}" target="_blank" class="hover:text-indigo-600">${res.url}</a></td><td class="text-center border-r border-indigo-50 text-xs uppercase font-black ${typeColor}">${res.type}</td><td class="text-center text-sm border-r border-indigo-50">${statusHtml}</td><td class="text-center w-full max-w-full">${linksHtml}</td>`;
                         tbody.appendChild(tr);
-                        const btn = tr.querySelector('.toggle-btn');
-                        if (btn) btn.onclick = () => btn.nextElementSibling.classList.toggle('hidden');
+                        const btn = tr.querySelector('.toggle-btn'); if (btn) btn.onclick = () => btn.nextElementSibling.classList.toggle('hidden');
                     });
-                } else { 
-                    showMeoUAlert('Không tìm thấy video nào trong khoảng ngày này.'); 
-                }
-            } catch (error) { 
-                showMeoUAlert('Lỗi kết nối máy chủ, vui lòng thử lại.'); 
-            } 
-            finally { 
-                clearInterval(loadingInterval);
-                loadingDiv.classList.add('hidden'); 
-            }
+                } else { showMeoUAlert('Không tìm thấy video nào trong khoảng ngày này.'); }
+            } catch (error) { showMeoUAlert('Lỗi kết nối máy chủ, vui lòng thử lại.'); } 
+            finally { clearInterval(loadingInterval); loadingDiv.classList.add('hidden'); }
         });
 
         document.getElementById('exportBtn').addEventListener('click', () => {
-            const results = currentData.results;
-            if (!results || results.length === 0) return;
-            
-            // XUẤT EXCEL 10 CỘT
-            const dataRows = [["NGÀY ĐĂNG", "CHANNEL NAME", "LINK YOUTUBE", "LOẠI VIDEO", "CÓ GẮN GIỎ HÀNG?", "TỔNG SP SHOPEE", "TỔNG SP LAZADA", "LINK SP", "SP THUỘC", "TỔNG SP KHÁC"]];
+            const results = currentData.results; if (!results || results.length === 0) return;
+            const dataRows = [["Ngày Đăng", "Channel Name", "Link YouTube", "Loại Video", "Có Gắn Giỏ Hàng?", "Tổng SP Shopee", "Tổng SP Lazada", "Link SP", "SP Thuộc", "TỔNG SP Khác"]];
             const styles = { alignment: { vertical: 'center', horizontal: 'center', wrapText: false }, border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } } };
-            
             results.forEach(video => {
                 let targetLinks = video.shopping_links.filter(item => item.platform === 'Shopee' || item.platform === 'Lazada');
-                
                 if (targetLinks.length > 0) {
-                    // In mỗi link 1 dòng, dữ liệu video lặp lại
                     targetLinks.forEach(linkObj => {
-                        dataRows.push([
-                            video.display_date, 
-                            video.channel_name, 
-                            video.url, 
-                            video.type, 
-                            video.has_shopping ? "CÓ" : "KHÔNG", 
-                            video.shopee_count, 
-                            video.lazada_count, 
-                            linkObj.clean_url, 
-                            linkObj.platform, 
-                            video.other_count
-                        ]);
+                        dataRows.push([video.display_date, video.channel_name, video.url, video.type, video.has_shopping ? "CÓ" : "KHÔNG", video.shopee_count, video.lazada_count, linkObj.clean_url, linkObj.platform, video.other_count]);
                     });
                 } else {
-                    // Nếu không có link Shopee/Lazada vẫn in 1 dòng thông tin video
-                    dataRows.push([
-                        video.display_date, 
-                        video.channel_name, 
-                        video.url, 
-                        video.type, 
-                        video.has_shopping ? "CÓ" : "KHÔNG", 
-                        video.shopee_count, 
-                        video.lazada_count, 
-                        "", 
-                        "", 
-                        video.other_count
-                    ]);
+                    dataRows.push([video.display_date, video.channel_name, video.url, video.type, video.has_shopping ? "CÓ" : "KHÔNG", video.shopee_count, video.lazada_count, "", "", video.other_count]);
                 }
             });
-            
             const ws = XLSX.utils.aoa_to_sheet(dataRows);
-            // Độ rộng các cột
             ws['!cols'] = [{wch: 15}, {wch: 25}, {wch: 35}, {wch: 12}, {wch: 18}, {wch: 18}, {wch: 18}, {wch: 60}, {wch: 12}, {wch: 18}];
-            
-            // Áp dụng định dạng ô
             for (let cell in ws) { 
                 if (cell[0] === '!') continue;
-                
                 let cellRef = XLSX.utils.decode_cell(cell);
                 let val = ws[cell].v;
                 let cellStyle = JSON.parse(JSON.stringify(styles)); 
-
-                // TIÊU ĐỀ: Xanh lam đậm 2 + Chữ trắng + Center
-                if (cellRef.r === 0) {
-                    cellStyle.fill = { fgColor: { rgb: "002060" } };
-                    cellStyle.font = { bold: true, color: { rgb: "FFFFFF" } };
-                    cellStyle.alignment = { vertical: 'center', horizontal: 'center', wrapText: true };
-                } 
+                if (cellRef.r === 0) { cellStyle.fill = { fgColor: { rgb: "002060" } }; cellStyle.font = { bold: true, color: { rgb: "FFFFFF" } }; cellStyle.alignment.wrapText = true; } 
                 else {
-                    // LINK YOUTUBE (Index 2) và LINK SP (Index 7) -> Căn Trái + Tràn ô (wrapText: false)
-                    if (cellRef.c === 2 || cellRef.c === 7) {
-                        cellStyle.alignment = { vertical: 'center', horizontal: 'left', wrapText: false };
-                    }
-
-                    // CÓ/KHÔNG (Index 4) -> Xanh lá / Đỏ
-                    if (cellRef.c === 4) {
-                        if (val === "CÓ") cellStyle.font = { bold: true, color: { rgb: "00B050" } };
-                        else if (val === "KHÔNG") cellStyle.font = { bold: true, color: { rgb: "FF0000" } };
-                    }
-                    // SHOPEE/LAZADA (Index 8) -> Cam / Hồng
-                    if (cellRef.c === 8) {
-                        if (val === "Shopee") cellStyle.font = { bold: true, color: { rgb: "FF8C00" } };
-                        else if (val === "Lazada") cellStyle.font = { bold: true, color: { rgb: "FF1493" } };
-                    }
+                    if (cellRef.c === 2 || cellRef.c === 7) cellStyle.alignment.horizontal = 'left';
+                    if (cellRef.c === 4) cellStyle.font = { bold: true, color: { rgb: val === "CÓ" ? "00B050" : "FF0000" } };
+                    if (cellRef.c === 8) cellStyle.font = { bold: true, color: { rgb: val === "Shopee" ? "FF8C00" : "FF1493" } };
                 }
                 ws[cell].s = cellStyle;
             }
-
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "MeoU");
+            const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "MeoU");
             XLSX.writeFile(wb, `MeoU_Scan_${currentData.channel_name}.xlsx`);
         });
     </script>

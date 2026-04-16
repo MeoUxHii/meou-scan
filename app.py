@@ -25,13 +25,12 @@ for key, value in os.environ.items():
         if password:
             USERS[value] = password
 
-print(f"--- Hệ thống đã sẵn sàng với {len(USERS)} tài khoản người dùng ---")
-
 ECOMMERCE_DOMAINS = r'(?:shopee\.vn|shope\.ee|lazada\.vn|lzd\.co|tiktok\.com|tiki\.vn|ti\.ki)'
 LINK_PATTERNS = [
     re.compile(r'https?://[^\s"\'<>\\{}]*' + ECOMMERCE_DOMAINS + r'[^\s"\'<>\\{}]*'),
     re.compile(r'https(?:%3A|:|\\u00253A)[^\s"\'<>\\{}]*' + ECOMMERCE_DOMAINS + r'[^\s"\'<>\\{}]*')
 ]
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -41,12 +40,11 @@ def login_required(f):
     return decorated_function
 
 def get_clean_ecommerce_url(raw_url):
-    """Lọc link nghiêm ngặt: Chỉ lấy link chuẩn Shopping, loại bỏ link rút gọn ở mô tả"""
+    """Lọc link nghiêm ngặt: Chỉ lấy link Shopping chuẩn, loại bỏ link mô tả rác"""
     try:
         decoded = urllib.parse.unquote(urllib.parse.unquote(raw_url))
         decoded = decoded.replace('\\/', '/').replace('\\u0026', '&').replace('\\', '').split('"')[0].split("'")[0]
         
-        # Bóc lõi link nếu bị YouTube redirect
         if 'youtube.com/redirect' in decoded or 'url=' in decoded or 'q=' in decoded:
             parsed = urllib.parse.urlparse(decoded)
             query = urllib.parse.parse_qs(parsed.query)
@@ -54,7 +52,6 @@ def get_clean_ecommerce_url(raw_url):
             elif 'url' in query: decoded = query['url'][0]
             elif 'origin_link' in query: decoded = query['origin_link'][0]
 
-        # 1. Lọc Lazada: Chỉ lấy link /products/ và cắt đến .html
         if 'lazada.vn/products/' in decoded:
             if '.html' in decoded:
                 decoded = decoded.split('.html')[0] + '.html'
@@ -62,12 +59,10 @@ def get_clean_ecommerce_url(raw_url):
                 decoded = decoded.split('?')[0]
             return {"url": decoded, "platform": "Lazada"}
             
-        # 2. Lọc Shopee: Chỉ lấy link /product/ (link giỏ hàng chuẩn)
         elif 'shopee.vn/product/' in decoded:
             decoded = decoded.split('?')[0]
             return {"url": decoded, "platform": "Shopee"}
             
-        # 3. Các sàn khác để đếm (Other)
         elif any(d in decoded for d in ['tiktok.com', 'tiki.vn', 'ti.ki']):
             decoded = decoded.split('?')[0]
             return {"url": decoded, "platform": "Other"}
@@ -87,7 +82,6 @@ def parse_iso_duration(duration_str):
 
 async def get_channel_info(session_http, url):
     try:
-        api_url = ""
         if '@' in url:
             handle = url.split('@')[-1].split('/')[0].split('?')[0]
             api_url = f"{YOUTUBE_API_BASE}/channels?part=snippet,contentDetails&forHandle={handle}&key={YOUTUBE_API_KEY}"
@@ -118,14 +112,13 @@ async def get_playlist_videos(session_http, playlist_id, max_results=50):
     except: return []
 
 async def fetch_html_and_extract_links(session_http, video_data, semaphore):
-    """Cào HTML và xóa mô tả để chỉ lấy link trong Giỏ hàng"""
     url = video_data['url']
     async with semaphore:
         try:
             async with session_http.get(url, timeout=10) as resp:
                 html_content = await resp.text()
                 
-                # --- XOÁ MÔ TẢ TRƯỚC KHI QUÉT ---
+                # --- TRICK: XOÁ SẠCH MÔ TẢ ĐỂ CHỈ LẤY GIỎ HÀNG ---
                 clean_html = re.sub(r'<meta name="description" content="[^"]*">', '', html_content)
                 clean_html = re.sub(r'"shortDescription":"(?:[^"\\]|\\.)*"', '""', clean_html)
                 clean_html = re.sub(r'"description":\{"runs":\[.*?\]\}', '""', clean_html)
@@ -174,7 +167,7 @@ async def process_all_urls(urls, start_date, end_date):
         valid_videos = []
         for i in range(0, len(unique_ids), 50):
             chunk = unique_ids[i:i+50]
-            api_url = f"{YOUTUBE_API_BASE}/videos?part=snippet,contentDetails&id={','.join(chunk)}&key={YOUTUBE_API_KEY}"
+            api_url = f"{YOUTUBE_API_BASE}/videos?part=snippet,contentDetails,liveStreamingDetails&id={','.join(chunk)}&key={YOUTUBE_API_KEY}"
             try:
                 async with session_http.get(api_url) as resp:
                     data = await resp.json()
@@ -182,9 +175,14 @@ async def process_all_urls(urls, start_date, end_date):
                         pub_date = item['snippet']['publishedAt'].split('T')[0]
                         if start_date <= pub_date <= end_date:
                             vid = item['id']
+                            
+                            is_live = 'liveStreamingDetails' in item or item['snippet'].get('liveBroadcastContent') != 'none'
                             v_type = "Video"
-                            duration = parse_iso_duration(item.get('contentDetails', {}).get('duration', 'PT0S'))
-                            if duration <= 60: v_type = "Short"
+                            if is_live:
+                                v_type = "Stream"
+                            else:
+                                duration = parse_iso_duration(item.get('contentDetails', {}).get('duration', 'PT0S'))
+                                if duration <= 60: v_type = "Short"
                             
                             valid_videos.append({
                                 "url": f"https://www.youtube.com/watch?v={vid}" if v_type != "Short" else f"https://www.youtube.com/shorts/{vid}",
@@ -208,8 +206,10 @@ def index(): return render_template('index.html', user=session['user'])
 def login():
     if request.method == 'POST':
         data = request.get_json()
-        if data.get('email') in USERS and USERS[data.get('email')] == data.get('password'):
-            session['user'] = data.get('email')
+        email = data.get('email')
+        password = data.get('password')
+        if email in USERS and USERS[email] == password:
+            session['user'] = email
             return jsonify({"status": "success"})
         return jsonify({"status": "error", "message": "Email hoặc mật khẩu sai!"}), 401
     return render_template('login.html')
@@ -223,11 +223,14 @@ def logout():
 def scan_links():
     data = request.get_json()
     try:
-        scanned_results, final_channel_name = asyncio.run(process_all_urls(data.get('urls', []), data.get('startDate'), data.get('endDate')))
-    except:
-        loop = asyncio.new_event_loop(); asyncio.set_event_loop(loop)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         scanned_results, final_channel_name = loop.run_until_complete(process_all_urls(data.get('urls', []), data.get('startDate'), data.get('endDate')))
         loop.close()
+    except Exception as e:
+        print(f"Lỗi Scan: {e}")
+        return jsonify({"results": [], "channel_name": "Lỗi"})
+        
     scanned_results.sort(key=lambda x: x['upload_date'], reverse=True)
     return jsonify({"results": scanned_results, "channel_name": final_channel_name})
 
