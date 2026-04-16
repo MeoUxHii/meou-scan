@@ -189,7 +189,7 @@
                                     return `<li class="mb-2 text-[13px] border-b border-indigo-50 pb-2 flex items-center gap-2"><span class="font-extrabold text-[10px] uppercase px-2 py-1 rounded border ${badgeColor}">${item.platform}</span><a href="${item.clean_url}" target="_blank" class="text-indigo-600 hover:text-indigo-800 truncate block w-full">${item.clean_url}</a></li>`;
                                 }).join('');
                                 linksHtml = `<div class="px-6 py-2"><button class="toggle-btn w-full bg-indigo-50 text-indigo-600 font-extrabold py-3 px-4 rounded-2xl border border-indigo-100 text-xs hover:bg-white transition-all shadow-sm">Giỏ hàng: ${targetLinks.length} SP ▼</button><ul class="link-list hidden mt-3 p-5 bg-white rounded-2xl border border-indigo-100 text-left custom-scrollbar overflow-y-auto max-h-48 shadow-xl text-slate-600">${listItems}</ul></div>`;
-                            } else { linksHtml = `<span class="text-slate-400 text-sm italic font-medium">${res.other_count} Sản Phẩm Sàn Khác - Cần K.Tra Thủ Công</span>`; }
+                            } else { linksHtml = `<span class="text-slate-400 text-sm italic font-medium">${res.other_count} Sản Phẩm Không Thuộc Shopee/Lazada</span>`; }
                         } else { linksHtml = '<span class="text-slate-400 text-sm italic font-medium">Trống</span>'; }
 
                         tr.innerHTML = `<td class="text-center text-sm text-slate-500 border-r border-indigo-50">${res.display_date}</td><td class="text-sm px-8 truncate border-r border-indigo-50 italic text-slate-400 font-medium"><a href="${res.url}" target="_blank" class="hover:text-indigo-600">${res.url}</a></td><td class="text-center border-r border-indigo-50 text-xs uppercase font-black ${typeColor}">${res.type}</td><td class="text-center text-sm border-r border-indigo-50">${statusHtml}</td><td class="text-center w-full max-w-full">${linksHtml}</td>`;
@@ -205,16 +205,20 @@
             const results = currentData.results; if (!results || results.length === 0) return;
             const dataRows = [["Ngày Đăng", "Channel Name", "Link YouTube", "Loại Video", "Có Gắn Giỏ Hàng?", "Tổng SP Shopee", "Tổng SP Lazada", "Link SP", "SP Thuộc", "TỔNG SP Khác"]];
             const styles = { alignment: { vertical: 'center', horizontal: 'center', wrapText: false }, border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } } };
+            
             results.forEach(video => {
                 let targetLinks = video.shopping_links.filter(item => item.platform === 'Shopee' || item.platform === 'Lazada');
                 if (targetLinks.length > 0) {
                     targetLinks.forEach(linkObj => {
                         dataRows.push([video.display_date, video.channel_name, video.url, video.type, video.has_shopping ? "Có" : "Không", video.shopee_count, video.lazada_count, linkObj.clean_url, linkObj.platform, video.other_count]);
                     });
+                } else if (video.other_count > 0) {
+                    dataRows.push([video.display_date, video.channel_name, video.url, video.type, "Có", video.shopee_count, video.lazada_count, "", "Sàn Khác", video.other_count]);
                 } else {
-                    dataRows.push([video.display_date, video.channel_name, video.url, video.type, video.has_shopping ? "Có" : "Không", video.shopee_count, video.lazada_count, "", "", video.other_count]);
+                    dataRows.push([video.display_date, video.channel_name, video.url, video.type, "Không", video.shopee_count, video.lazada_count, "", "", video.other_count]);
                 }
             });
+
             const ws = XLSX.utils.aoa_to_sheet(dataRows);
             ws['!cols'] = [{wch: 15}, {wch: 25}, {wch: 35}, {wch: 12}, {wch: 18}, {wch: 18}, {wch: 18}, {wch: 60}, {wch: 12}, {wch: 18}];
             for (let cell in ws) { 
@@ -226,7 +230,11 @@
                 else {
                     if (cellRef.c === 2 || cellRef.c === 7) cellStyle.alignment.horizontal = 'left';
                     if (cellRef.c === 4) cellStyle.font = { bold: true, color: { rgb: val === "Có" ? "00B050" : "FF0000" } };
-                    if (cellRef.c === 8) cellStyle.font = { bold: true, color: { rgb: val === "Shopee" ? "FF8C00" : "FF1493" } };
+                    if (cellRef.c === 8) {
+                        if (val === "Shopee") cellStyle.font = { bold: true, color: { rgb: "FF8C00" } };
+                        else if (val === "Lazada") cellStyle.font = { bold: true, color: { rgb: "FF1493" } };
+                        else if (val === "Sàn Khác") cellStyle.font = { bold: true, color: { rgb: "000000" } };
+                    }
                 }
                 ws[cell].s = cellStyle;
             }

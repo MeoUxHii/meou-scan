@@ -25,7 +25,7 @@ for key, value in os.environ.items():
         if password:
             USERS[value] = password
 
-ECOMMERCE_DOMAINS = r'(?:shopee\.vn|shope\.ee|lazada\.vn|lzd\.co|tiktok\.com|tiki\.vn|ti\.ki)'
+ECOMMERCE_DOMAINS = r'(?:shopee\.vn|shope\.ee|lazada\.vn|lzd\.co|tiktok\.com|tiki\.vn|ti\.ki|joyme|s\.shopee\.vn)'
 LINK_PATTERNS = [
     re.compile(r'https?://[^\s"\'<>\\{}]*' + ECOMMERCE_DOMAINS + r'[^\s"\'<>\\{}]*'),
     re.compile(r'https(?:%3A|:|\\u00253A)[^\s"\'<>\\{}]*' + ECOMMERCE_DOMAINS + r'[^\s"\'<>\\{}]*')
@@ -40,34 +40,64 @@ def login_required(f):
     return decorated_function
 
 def get_clean_ecommerce_url(raw_url):
-    """Lọc link nghiêm ngặt: Chỉ lấy link Shopping chuẩn, loại bỏ link mô tả rác"""
     try:
         decoded = urllib.parse.unquote(urllib.parse.unquote(raw_url))
         decoded = decoded.replace('\\/', '/').replace('\\u0026', '&').replace('\\', '').split('"')[0].split("'")[0]
         
+        if 'an_redir' in decoded:
+            return None
+            
         if 'youtube.com/redirect' in decoded or 'url=' in decoded or 'q=' in decoded:
+            
+            # Chặn đứng các link sinh ra từ Mô tả, Bình luận, và Giới thiệu kênh qua định tuyến redirect
+            if 'event=video_description' in decoded or 'event=comments' in decoded or 'event=channel_description' in decoded:
+                return None
+                
             parsed = urllib.parse.urlparse(decoded)
             query = urllib.parse.parse_qs(parsed.query)
             if 'q' in query: decoded = query['q'][0]
             elif 'url' in query: decoded = query['url'][0]
             elif 'origin_link' in query: decoded = query['origin_link'][0]
 
-        if 'lazada.vn/products/' in decoded:
-            if '.html' in decoded:
+        # KHÔI PHỤC LOGIC GỐC: NẾU KHÔNG PHẢI LINK PRODUCT THÌ LOẠI BỎ
+        decoded_lower = decoded.lower()
+        
+        if 'lazada.vn' in decoded_lower or 'lzd.co' in decoded_lower:
+            # Bắt buộc phải là link sản phẩm Lazada
+            if '.html' not in decoded_lower and '/products/' not in decoded_lower:
+                return None
+            if '.html' in decoded_lower:
                 decoded = decoded.split('.html')[0] + '.html'
             else:
                 decoded = decoded.split('?')[0]
             return {"url": decoded, "platform": "Lazada"}
             
-        elif 'shopee.vn/product/' in decoded:
+        elif 'shopee.vn' in decoded_lower or 'shope.ee' in decoded_lower or 's.shopee.vn' in decoded_lower:
+            # Bắt buộc phải là link sản phẩm Shopee (Loại bỏ link rút gọn chiến dịch/shop ở mô tả)
+            if '/product/' not in decoded_lower and '-i.' not in decoded_lower and 'sp_atk' not in decoded_lower:
+                return None
             decoded = decoded.split('?')[0]
             return {"url": decoded, "platform": "Shopee"}
             
-        elif any(d in decoded for d in ['tiktok.com', 'tiki.vn', 'ti.ki']):
+        elif 'tiktok.com' in decoded_lower:
+            # Bắt buộc phải là link sản phẩm Tiktok Shop
+            if '/product/' not in decoded_lower and '/view/product/' not in decoded_lower:
+                return None
             decoded = decoded.split('?')[0]
             return {"url": decoded, "platform": "Other"}
             
-        return None
+        elif 'tiki.vn' in decoded_lower or 'ti.ki' in decoded_lower:
+            # Bắt buộc phải là link sản phẩm Tiki
+            if '.html' not in decoded_lower and '/p' not in decoded_lower:
+                return None
+            decoded = decoded.split('?')[0]
+            return {"url": decoded, "platform": "Other"}
+            
+        else:
+            # Dành cho Joyme hoặc các nền tảng Affiliate khác
+            decoded = decoded.split('?')[0]
+            return {"url": decoded, "platform": "Other"}
+            
     except: return None
 
 def extract_video_id(url):
@@ -112,37 +142,90 @@ async def get_playlist_videos(session_http, playlist_id, max_results=50):
     except: return []
 
 async def fetch_html_and_extract_links(session_http, video_data, semaphore):
-    url = video_data['url']
+    vid = video_data['vid']
+    shorts_url = f"https://www.youtube.com/shorts/{vid}"
+    
     async with semaphore:
         try:
-            async with session_http.get(url, timeout=10) as resp:
-                html_content = await resp.text()
-                
-                # --- TRICK: XOÁ SẠCH MÔ TẢ ĐỂ CHỈ LẤY GIỎ HÀNG ---
-                clean_html = re.sub(r'<meta name="description" content="[^"]*">', '', html_content)
-                clean_html = re.sub(r'"shortDescription":"(?:[^"\\]|\\.)*"', '""', clean_html)
-                clean_html = re.sub(r'"description":\{"runs":\[.*?\]\}', '""', clean_html)
+            current_type = video_data['type']
+            html_content = ""
+            
+            async with session_http.get(shorts_url, allow_redirects=False, timeout=10) as resp:
+                if resp.status == 200:
+                    video_data['type'] = 'Short'
+                    video_data['url'] = shorts_url
+                    html_content = await resp.text()
+                else:
+                    if current_type != 'Stream':
+                        video_data['type'] = 'Video'
+                    video_data['url'] = f"https://www.youtube.com/watch?v={vid}"
+            
+            if not html_content:
+                async with session_http.get(video_data['url'], timeout=10) as resp:
+                    html_content = await resp.text()
+            
+            if video_data['type'] == 'Stream':
+                if re.search(r'"isPremiere"\s*:\s*true', html_content) or 'BADGE_STYLE_TYPE_PREMIERE' in html_content:
+                    video_data['type'] = 'Video'
+            
+            clean_html = html_content
+            
+            # LỚP BẢO VỆ 1: Tiêu huỷ văn bản thô. 
+            clean_html = re.sub(r'<meta[^>]*>', '', clean_html)
+            clean_html = re.sub(r'"text"\s*:\s*"(?:[^"\\]|\\.)*"', '""', clean_html)
+            clean_html = re.sub(r'"content"\s*:\s*"(?:[^"\\]|\\.)*"', '""', clean_html)
+            clean_html = re.sub(r'"simpleText"\s*:\s*"(?:[^"\\]|\\.)*"', '""', clean_html)
 
-                raw_links = {}
-                for p in LINK_PATTERNS:
-                    for m in p.findall(clean_html):
-                        clean_data = get_clean_ecommerce_url(m)
-                        if clean_data and clean_data['url'] not in raw_links:
-                            raw_links[clean_data['url']] = clean_data['platform']
-                        
-                ecommerce_items = [{"clean_url": k, "platform": v} for k, v in raw_links.items()]
+            raw_links = {}
+            for p in LINK_PATTERNS:
+                for m in p.findall(clean_html):
+                    clean_data = get_clean_ecommerce_url(m)
+                    if clean_data and clean_data['url'] not in raw_links:
+                        raw_links[clean_data['url']] = clean_data['platform']
+                    
+            ecommerce_items = [{"clean_url": k, "platform": v} for k, v in raw_links.items()]
+            
+            # Xác định chắc chắn 100% video này có tính năng Giỏ hàng (Native Shopping) hay không
+            unique_ids = set(re.findall(r'"shoppingId"\s*:\s*"([^"]{5,30})"', clean_html))
+            json_merchants = re.findall(r'"merchantName"\s*:\s*"([^"]+)"', clean_html)
+            has_renderers = bool(re.search(r'"(?:merchShelfItemRenderer|shoppingCarouselItemRenderer|productListItemRenderer)"', clean_html))
+            
+            has_native_shopping = bool(unique_ids) or bool(json_merchants) or has_renderers
+            
+            shopee_c = 0
+            lazada_c = 0
+            total_other_count = 0
+            
+            # LỚP BẢO VỆ 2: NẾU KHÔNG CÓ GIỎ HÀNG THẬT -> XOÁ SẠCH MỌI LINK (chặn triệt để lọt link mô tả)
+            if not has_native_shopping:
+                ecommerce_items = []
+            else:
+                shopee_c = sum(1 for i in ecommerce_items if i['platform'] == 'Shopee')
+                lazada_c = sum(1 for i in ecommerce_items if i['platform'] == 'Lazada')
                 
-                video_data.update({
-                    'has_shopping': len(ecommerce_items) > 0,
-                    'shopping_links': ecommerce_items,
-                    'shopee_count': sum(1 for i in ecommerce_items if i['platform'] == 'Shopee'),
-                    'lazada_count': sum(1 for i in ecommerce_items if i['platform'] == 'Lazada'),
-                    'other_count': sum(1 for i in ecommerce_items if i['platform'] == 'Other'),
-                    'status': 'success'
-                })
-                return video_data
+                # Chỉ tìm sàn khác nếu KHÔNG có Shopee/Lazada
+                if shopee_c == 0 and lazada_c == 0:
+                    other_url_c = sum(1 for i in ecommerce_items if i['platform'] == 'Other')
+                    
+                    if unique_ids:
+                        native_other_count = len(unique_ids)
+                    else:
+                        unique_merchants = {m.strip().lower() for m in json_merchants if m.strip() and 'shopee' not in m.lower() and 'lazada' not in m.lower()}
+                        native_other_count = len(unique_merchants)
+                    
+                    total_other_count = max(other_url_c, native_other_count)
+            
+            video_data.update({
+                'has_shopping': has_native_shopping,
+                'shopping_links': ecommerce_items,
+                'shopee_count': shopee_c,
+                'lazada_count': lazada_c,
+                'other_count': total_other_count,
+                'status': 'success'
+            })
+            return video_data
         except:
-            video_data.update({'has_shopping': False, 'shopping_links':[], 'shopee_count': 0, 'lazada_count': 0, 'other_count': 0, 'status': 'error'})
+            video_data.update({'has_shopping': False, 'shopping_links':[], 'shopee_count': 0, 'lazada_count': 0, 'other_count': 0, 'status': 'error', 'url': f"https://www.youtube.com/watch?v={vid}"})
             return video_data
 
 async def process_all_urls(urls, start_date, end_date):
@@ -161,7 +244,8 @@ async def process_all_urls(urls, start_date, end_date):
                         candidate_ids.extend(vids)
             else:
                 vid = extract_video_id(u)
-                if vid: candidate_ids.append(vid)
+                if vid: 
+                    candidate_ids.append(vid)
                 
         unique_ids = list(set(candidate_ids))
         valid_videos = []
@@ -177,15 +261,11 @@ async def process_all_urls(urls, start_date, end_date):
                             vid = item['id']
                             
                             is_live = 'liveStreamingDetails' in item or item['snippet'].get('liveBroadcastContent') != 'none'
-                            v_type = "Video"
-                            if is_live:
-                                v_type = "Stream"
-                            else:
-                                duration = parse_iso_duration(item.get('contentDetails', {}).get('duration', 'PT0S'))
-                                if duration <= 60: v_type = "Short"
+                            v_type = "Stream" if is_live else "Video"
                             
                             valid_videos.append({
-                                "url": f"https://www.youtube.com/watch?v={vid}" if v_type != "Short" else f"https://www.youtube.com/shorts/{vid}",
+                                "vid": vid,
+                                "url": "", 
                                 "upload_date": pub_date,
                                 "display_date": datetime.strptime(pub_date, "%Y-%m-%d").strftime("%d/%m/%Y"),
                                 "type": v_type,
