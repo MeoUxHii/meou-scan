@@ -1,0 +1,5 @@
+Flask
+aiohttp
+python-dotenv
+xlsx-js-style
+gunicorn
