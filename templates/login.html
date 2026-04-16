@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MeoU Scan - Login</title>
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Quicksand', sans-serif; }
+        body {
+            background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%);
+            min-height: 100vh;
+            display: flex; align-items: center; justify-content: center; padding: 20px;
+        }
+        .login-card {
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 30px;
+            padding: 40px;
+            width: 100%; max-width: 400px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .input-group { position: relative; margin-bottom: 25px; text-align: left; }
+        .input-group input {
+            width: 100%; padding: 15px 20px;
+            background: rgba(255, 255, 255, 0.5);
+            border: 2px solid transparent; border-radius: 15px;
+            outline: none; font-weight: 700; color: #5a54a4;
+            transition: all 0.3s;
+        }
+        .input-group input:focus { border-color: #a18cd1; background: white; }
+        .input-group label {
+            display: block; margin-bottom: 8px; margin-left: 5px;
+            font-size: 13px; font-weight: 700; color: #5a54a4;
+        }
+        .login-btn {
+            width: 100%; padding: 15px;
+            background: linear-gradient(90deg, #a18cd1 0%, #8ec5fc 100%);
+            border: none; border-radius: 15px;
+            color: white; font-size: 18px; font-weight: 700;
+            cursor: pointer; transition: all 0.3s;
+            box-shadow: 0 10px 20px rgba(142,197,252,0.4);
+        }
+        .login-btn:hover { transform: translateY(-3px); brightness: 1.1; }
+        .error-msg { color: #e11d48; font-size: 13px; font-weight: 700; margin-top: 15px; display: none; }
+        .loader {
+            width: 20px; height: 20px; border: 3px solid #fff; border-bottom-color: transparent;
+            border-radius: 50%; display: inline-block; animation: rotation 1s linear infinite;
+            margin-right: 10px; display: none;
+        }
+        @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="mb-8">
+            <h2 class="text-3xl font-extrabold text-[#5a54a4]">MeoU Scan</h2>
+            <p class="text-[#5a54a4]/60 font-bold text-sm">Vui lòng đăng nhập để tiếp tục</p>
+        </div>
+        
+        <form id="loginForm">
+            <div class="input-group">
+                <label>Email Address</label>
+                <input type="email" id="email" placeholder="meou@example.com" required>
+            </div>
+            <div class="input-group">
+                <label>Password</label>
+                <input type="password" id="password" placeholder="••••••••" required>
+            </div>
+            <button type="submit" class="login-btn" id="submitBtn">
+                <span class="loader" id="loader"></span>
+                <span>Sign In</span>
+            </button>
+            <p id="errorMessage" class="error-msg"></p>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const btn = document.getElementById('submitBtn');
+            const loader = document.getElementById('loader');
+            const errorMsg = document.getElementById('errorMessage');
+
+            btn.disabled = true;
+            loader.style.display = 'inline-block';
+            errorMsg.style.display = 'none';
+
+            try {
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                if (response.ok) {
+                    window.location.href = '/';
+                } else {
+                    const data = await response.json();
+                    errorMsg.innerText = data.message;
+                    errorMsg.style.display = 'block';
+                }
+            } catch (err) {
+                errorMsg.innerText = "Lỗi kết nối server!";
+                errorMsg.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                loader.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
