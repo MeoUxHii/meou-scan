@@ -178,8 +178,8 @@
                     currentData.results.forEach(res => {
                         const tr = document.createElement('tr');
                         tr.className = "border-b border-indigo-50 hover:bg-indigo-50/20 transition-all";
-                        let typeColor = res.type === 'Short' ? 'text-pink-500' : (res.type === 'Stream' ? 'text-indigo-500' : 'text-blue-500');
-                        let statusHtml = res.has_shopping ? '<span class="text-emerald-500 font-extrabold text-lg">CÓ</span>' : '<span class="text-slate-300">KHÔNG</span>';
+                        let typeColor = res.type === 'Short' ? 'text-pink-500' : (res.type === 'Stream' ? 'text-purple-600' : 'text-blue-500');
+                        let statusHtml = res.has_shopping ? '<span class="text-emerald-500 font-extrabold text-lg">Có</span>' : '<span class="text-slate-300">Không</span>';
                         let linksHtml = '';
                         if (res.has_shopping) {
                             let targetLinks = res.shopping_links.filter(item => item.platform === 'Shopee' || item.platform === 'Lazada');
@@ -189,7 +189,7 @@
                                     return `<li class="mb-2 text-[13px] border-b border-indigo-50 pb-2 flex items-center gap-2"><span class="font-extrabold text-[10px] uppercase px-2 py-1 rounded border ${badgeColor}">${item.platform}</span><a href="${item.clean_url}" target="_blank" class="text-indigo-600 hover:text-indigo-800 truncate block w-full">${item.clean_url}</a></li>`;
                                 }).join('');
                                 linksHtml = `<div class="px-6 py-2"><button class="toggle-btn w-full bg-indigo-50 text-indigo-600 font-extrabold py-3 px-4 rounded-2xl border border-indigo-100 text-xs hover:bg-white transition-all shadow-sm">Giỏ hàng: ${targetLinks.length} SP ▼</button><ul class="link-list hidden mt-3 p-5 bg-white rounded-2xl border border-indigo-100 text-left custom-scrollbar overflow-y-auto max-h-48 shadow-xl text-slate-600">${listItems}</ul></div>`;
-                            } else { linksHtml = `<span class="text-slate-400 text-sm italic font-medium">Có ${res.other_count} SP (Sàn khác)</span>`; }
+                            } else { linksHtml = `<span class="text-slate-400 text-sm italic font-medium">${res.other_count} Sản Phẩm Sàn Khác - Cần K.Tra Thủ Công</span>`; }
                         } else { linksHtml = '<span class="text-slate-400 text-sm italic font-medium">Trống</span>'; }
 
                         tr.innerHTML = `<td class="text-center text-sm text-slate-500 border-r border-indigo-50">${res.display_date}</td><td class="text-sm px-8 truncate border-r border-indigo-50 italic text-slate-400 font-medium"><a href="${res.url}" target="_blank" class="hover:text-indigo-600">${res.url}</a></td><td class="text-center border-r border-indigo-50 text-xs uppercase font-black ${typeColor}">${res.type}</td><td class="text-center text-sm border-r border-indigo-50">${statusHtml}</td><td class="text-center w-full max-w-full">${linksHtml}</td>`;
@@ -209,10 +209,10 @@
                 let targetLinks = video.shopping_links.filter(item => item.platform === 'Shopee' || item.platform === 'Lazada');
                 if (targetLinks.length > 0) {
                     targetLinks.forEach(linkObj => {
-                        dataRows.push([video.display_date, video.channel_name, video.url, video.type, video.has_shopping ? "CÓ" : "KHÔNG", video.shopee_count, video.lazada_count, linkObj.clean_url, linkObj.platform, video.other_count]);
+                        dataRows.push([video.display_date, video.channel_name, video.url, video.type, video.has_shopping ? "Có" : "Không", video.shopee_count, video.lazada_count, linkObj.clean_url, linkObj.platform, video.other_count]);
                     });
                 } else {
-                    dataRows.push([video.display_date, video.channel_name, video.url, video.type, video.has_shopping ? "CÓ" : "KHÔNG", video.shopee_count, video.lazada_count, "", "", video.other_count]);
+                    dataRows.push([video.display_date, video.channel_name, video.url, video.type, video.has_shopping ? "Có" : "Không", video.shopee_count, video.lazada_count, "", "", video.other_count]);
                 }
             });
             const ws = XLSX.utils.aoa_to_sheet(dataRows);
@@ -225,7 +225,7 @@
                 if (cellRef.r === 0) { cellStyle.fill = { fgColor: { rgb: "002060" } }; cellStyle.font = { bold: true, color: { rgb: "FFFFFF" } }; cellStyle.alignment.wrapText = true; } 
                 else {
                     if (cellRef.c === 2 || cellRef.c === 7) cellStyle.alignment.horizontal = 'left';
-                    if (cellRef.c === 4) cellStyle.font = { bold: true, color: { rgb: val === "CÓ" ? "00B050" : "FF0000" } };
+                    if (cellRef.c === 4) cellStyle.font = { bold: true, color: { rgb: val === "Có" ? "00B050" : "FF0000" } };
                     if (cellRef.c === 8) cellStyle.font = { bold: true, color: { rgb: val === "Shopee" ? "FF8C00" : "FF1493" } };
                 }
                 ws[cell].s = cellStyle;
