@@ -104,23 +104,7 @@ let currentData={results:[],channel_name:"MeoU"};
 let temporaryStorage=[];
 let isCurrentSaved=false;
 let loadingInterval;
-const loadingMessages=[
-  "Đang Rà Soát Dữ Liệu...🙄🤏",
-  "Đang Đấm Nhau Với Mã Nguồn...🤛😠",
-  "Ớ ~ ~ ~ ~ 😵‍💫 Thua Rồi...",
-  "Đang Thương Lượng Với Google...😑🤝",
-  "Lại Đấm Nhau Vì Không Thương Lượng Được...🤬",
-  "Đang Liên Hệ Với Yang Hồ...🤙😤",
-  "Đang Đứng Vuốt Tóc Chờ Yang Hồ Dẹp Loạn... 💇‍♂️💅",
-  "Yang Hồ Bị Đánh Chạy Cỏn Đuôi... 😱🐕",
-  "Đang Tìm Cách Rình Mò Data... 🤪🦯",
-  "Đang Bị Server Rượt Chạy Tụt Quần... 🏃‍♂️👖",
-  "Đang Núp Lùm Chờ Youtube Đi... 🌳🫣",
-  "Đang Móc Trộm Dữ Liệu Bỏ Vô Túi... 🥷👝",
-  "Đang Suy Tư Xem Mình Đang Làm Gì... 🤔",
-  "Ờ Sao Mình Lại Ở Đây Nhể... 📦😎"
-  "Ô Cậu Bảnh"
-];
+const loadingMessages=["Đang Rà Soát Dữ Liệu...🙄🤏","Đang Đấm Nhau Với Mã Nguồn...🤛😠","Ớ ~ ~ ~ ~ 😵‍💫 Thua Rồi...","Đang Thương Lượng Với Google...😑🤝","Lại Đấm Nhau Vì Không Thương Lượng Được...🤬","Đang Liên Hệ Với Yang Hồ...🤙😤"];
 const fpkConfig={locale:"vn",dateFormat:"Y-m-d",altInput:true,altFormat:"d/m/Y",maxDate:"today",disableMobile:"true"};
 const startPicker=flatpickr("#startDate",{...fpkConfig,onChange:(d,str)=>endPicker.set("minDate",str)});
 const endPicker=flatpickr("#endDate",fpkConfig);
