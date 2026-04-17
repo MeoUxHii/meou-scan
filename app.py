@@ -302,7 +302,7 @@ async def process_all_urls(urls, start_date, end_date):
                             })
             except: continue
                 
-        semaphore = asyncio.Semaphore(50) 
+        semaphore = asyncio.Semaphore(15)
         tasks = [fetch_html_and_extract_links(session_http, v, semaphore) for v in valid_videos]
         scanned_results = await asyncio.gather(*tasks)
     return scanned_results, final_channel_name
