@@ -132,14 +132,43 @@ async def get_channel_info(session_http, url):
             return [uploads_id] if uploads_id else [], channel_name
     except: return [], "MeoU"
 
-async def get_playlist_videos(session_http, playlist_id, max_results=50):
+async def get_playlist_videos(session_http, playlist_id, max_results=50, max_pages=20):
+    video_ids =[]
+    next_page_token = None
+    pages_fetched = 0
+    
     try:
-        api_url = f"{YOUTUBE_API_BASE}/playlistItems?part=snippet&maxResults={max_results}&playlistId={playlist_id}&key={YOUTUBE_API_KEY}"
-        async with session_http.get(api_url) as resp:
-            if resp.status != 200: return []
-            data = await resp.json()
-            return [item['snippet']['resourceId']['videoId'] for item in data.get('items', [])]
-    except: return []
+        # Lặp để quét qua nhiều trang, max_pages=20 tương đương với tối đa 1000 video (20*50)
+        while pages_fetched < max_pages:
+            api_url = f"{YOUTUBE_API_BASE}/playlistItems?part=snippet&maxResults={max_results}&playlistId={playlist_id}&key={YOUTUBE_API_KEY}"
+            
+            # Nếu có token của trang tiếp theo thì gắn vào URL
+            if next_page_token:
+                api_url += f"&pageToken={next_page_token}"
+                
+            async with session_http.get(api_url) as resp:
+                if resp.status != 200: 
+                    break
+                data = await resp.json()
+                
+                # Góp video id vào mảng tổng
+                items = data.get('items',[])
+                for item in items:
+                    video_ids.append(item['snippet']['resourceId']['videoId'])
+                
+                # Lấy token để đi tới trang tiếp theo
+                next_page_token = data.get('nextPageToken')
+                
+                # Nếu không còn trang nào nữa (đã quét sạch kênh) thì ngắt vòng lặp
+                if not next_page_token:
+                    break
+                    
+            pages_fetched += 1
+            
+        return video_ids
+    except Exception as e: 
+        print(f"Lỗi lấy playlist: {e}")
+        return video_ids
 
 async def fetch_html_and_extract_links(session_http, video_data, semaphore):
     vid = video_data['vid']
