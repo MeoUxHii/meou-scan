@@ -59,7 +59,6 @@ def get_clean_ecommerce_url(raw_url):
             elif 'url' in query: decoded = query['url'][0]
             elif 'origin_link' in query: decoded = query['origin_link'][0]
 
-        # KHÔI PHỤC LOGIC GỐC: NẾU KHÔNG PHẢI LINK PRODUCT THÌ LOẠI BỎ
         decoded_lower = decoded.lower()
         
         if 'lazada.vn' in decoded_lower or 'lzd.co' in decoded_lower:
@@ -118,31 +117,29 @@ async def get_channel_info(session_http, url):
         elif '/channel/' in url:
             channel_id = url.split('/channel/')[-1].split('/')[0].split('?')[0]
             api_url = f"{YOUTUBE_API_BASE}/channels?part=snippet,contentDetails&id={channel_id}&key={YOUTUBE_API_KEY}"
-        else: return [], "MeoU"
+        else: return[], "MeoU"
 
         async with session_http.get(api_url) as resp:
             data = await resp.json()
-            if not data.get('items'): return [], "Channel"
+            if not data.get('items'): return[], "Channel"
             item = data['items'][0]
             channel_name, channel_id = item['snippet']['title'], item['id']
             if channel_id.startswith("UC"):
                 base_id = channel_id[2:]
-                return ["UU" + base_id, "UUSH" + base_id, "UULV" + base_id], channel_name
+                return["UU" + base_id, "UUSH" + base_id, "UULV" + base_id], channel_name
             uploads_id = item['contentDetails']['relatedPlaylists'].get('uploads')
-            return [uploads_id] if uploads_id else [], channel_name
-    except: return [], "MeoU"
+            return [uploads_id] if uploads_id else[], channel_name
+    except: return[], "MeoU"
 
-async def get_playlist_videos(session_http, playlist_id, max_results=50, max_pages=20):
+async def get_playlist_videos(session_http, playlist_id, start_date, max_results=50, max_pages=100):
     video_ids =[]
     next_page_token = None
     pages_fetched = 0
     
     try:
-        # Lặp để quét qua nhiều trang, max_pages=20 tương đương với tối đa 1000 video (20*50)
         while pages_fetched < max_pages:
             api_url = f"{YOUTUBE_API_BASE}/playlistItems?part=snippet&maxResults={max_results}&playlistId={playlist_id}&key={YOUTUBE_API_KEY}"
             
-            # Nếu có token của trang tiếp theo thì gắn vào URL
             if next_page_token:
                 api_url += f"&pageToken={next_page_token}"
                 
@@ -151,15 +148,27 @@ async def get_playlist_videos(session_http, playlist_id, max_results=50, max_pag
                     break
                 data = await resp.json()
                 
-                # Góp video id vào mảng tổng
                 items = data.get('items',[])
+                stop_fetching = False
+                
                 for item in items:
+                    # Rút xuất ngày publish (YYYY-MM-DD)
+                    pub_date = item['snippet']['publishedAt'].split('T')[0]
+                    
+                    # CƠ CHẾ DỪNG THÔNG MINH:
+                    # Vì video xếp từ mới -> cũ, nếu gặp video cũ hơn start_date thì các video sau chắc chắn cũ hơn -> Cắt luôn!
+                    if pub_date < start_date:
+                        stop_fetching = True
+                        break 
+                        
                     video_ids.append(item['snippet']['resourceId']['videoId'])
                 
-                # Lấy token để đi tới trang tiếp theo
+                # Nếu đã kích hoạt cờ dừng, phá luôn vòng lặp while để không tải trang (page) tiếp theo
+                if stop_fetching:
+                    break
+                
                 next_page_token = data.get('nextPageToken')
                 
-                # Nếu không còn trang nào nữa (đã quét sạch kênh) thì ngắt vòng lặp
                 if not next_page_token:
                     break
                     
@@ -212,7 +221,7 @@ async def fetch_html_and_extract_links(session_http, video_data, semaphore):
                     if clean_data and clean_data['url'] not in raw_links:
                         raw_links[clean_data['url']] = clean_data['platform']
                     
-            ecommerce_items = [{"clean_url": k, "platform": v} for k, v in raw_links.items()]
+            ecommerce_items =[{"clean_url": k, "platform": v} for k, v in raw_links.items()]
             
             # Xác định chắc chắn 100% video này có tính năng Giỏ hàng (Native Shopping) hay không
             unique_ids = set(re.findall(r'"shoppingId"\s*:\s*"([^"]{5,30})"', clean_html))
@@ -225,9 +234,9 @@ async def fetch_html_and_extract_links(session_http, video_data, semaphore):
             lazada_c = 0
             total_other_count = 0
             
-            # LỚP BẢO VỆ 2: NẾU KHÔNG CÓ GIỎ HÀNG THẬT -> XOÁ SẠCH MỌI LINK (chặn triệt để lọt link mô tả)
+            # LỚP BẢO VỆ 2: NẾU KHÔNG CÓ GIỎ HÀNG THẬT -> XOÁ SẠCH MỌI LINK
             if not has_native_shopping:
-                ecommerce_items = []
+                ecommerce_items =[]
             else:
                 shopee_c = sum(1 for i in ecommerce_items if i['platform'] == 'Shopee')
                 lazada_c = sum(1 for i in ecommerce_items if i['platform'] == 'Lazada')
@@ -258,7 +267,7 @@ async def fetch_html_and_extract_links(session_http, video_data, semaphore):
             return video_data
 
 async def process_all_urls(urls, start_date, end_date):
-    candidate_ids = []
+    candidate_ids =[]
     final_channel_name = "MeoU"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
     
@@ -269,7 +278,7 @@ async def process_all_urls(urls, start_date, end_date):
                 if playlist_ids:
                     final_channel_name = name
                     for pid in playlist_ids:
-                        vids = await get_playlist_videos(session_http, pid, max_results=50)
+                        vids = await get_playlist_videos(session_http, pid, start_date, max_results=50)
                         candidate_ids.extend(vids)
             else:
                 vid = extract_video_id(u)
@@ -277,14 +286,14 @@ async def process_all_urls(urls, start_date, end_date):
                     candidate_ids.append(vid)
                 
         unique_ids = list(set(candidate_ids))
-        valid_videos = []
+        valid_videos =[]
         for i in range(0, len(unique_ids), 50):
             chunk = unique_ids[i:i+50]
             api_url = f"{YOUTUBE_API_BASE}/videos?part=snippet,contentDetails,liveStreamingDetails&id={','.join(chunk)}&key={YOUTUBE_API_KEY}"
             try:
                 async with session_http.get(api_url) as resp:
                     data = await resp.json()
-                    for item in data.get('items', []):
+                    for item in data.get('items',[]):
                         pub_date = item['snippet']['publishedAt'].split('T')[0]
                         if start_date <= pub_date <= end_date:
                             vid = item['id']
@@ -302,8 +311,9 @@ async def process_all_urls(urls, start_date, end_date):
                             })
             except: continue
                 
-        semaphore = asyncio.Semaphore(15)
-        tasks = [fetch_html_and_extract_links(session_http, v, semaphore) for v in valid_videos]
+        # GIẢM LUỒNG ĐỒNG THỜI XUỐNG 15 ĐỂ CHỐNG TRÀN RAM
+        semaphore = asyncio.Semaphore(15) 
+        tasks =[fetch_html_and_extract_links(session_http, v, semaphore) for v in valid_videos]
         scanned_results = await asyncio.gather(*tasks)
     return scanned_results, final_channel_name
 
@@ -334,11 +344,11 @@ def scan_links():
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        scanned_results, final_channel_name = loop.run_until_complete(process_all_urls(data.get('urls', []), data.get('startDate'), data.get('endDate')))
+        scanned_results, final_channel_name = loop.run_until_complete(process_all_urls(data.get('urls',[]), data.get('startDate'), data.get('endDate')))
         loop.close()
     except Exception as e:
         print(f"Lỗi Scan: {e}")
-        return jsonify({"results": [], "channel_name": "Lỗi"})
+        return jsonify({"results":[], "channel_name": "Lỗi"})
         
     scanned_results.sort(key=lambda x: x['upload_date'], reverse=True)
     return jsonify({"results": scanned_results, "channel_name": final_channel_name})
