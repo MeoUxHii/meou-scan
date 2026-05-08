@@ -223,10 +223,10 @@ async def fetch_html_and_extract_links(session_http, video_data, semaphore):
                     
             ecommerce_items =[{"clean_url": k, "platform": v} for k, v in raw_links.items()]
             
-            # Xác định chắc chắn 100% video này có tính năng Giỏ hàng (Native Shopping) hay không
-            unique_ids = set(re.findall(r'"shoppingId"\s*:\s*"([^"]{5,30})"', clean_html))
-            json_merchants = re.findall(r'"merchantName"\s*:\s*"([^"]+)"', clean_html)
-            has_renderers = bool(re.search(r'"(?:merchShelfItemRenderer|shoppingCarouselItemRenderer|productListItemRenderer)"', clean_html))
+            # CẬP NHẬT: Xác định chắc chắn 100% video này có tính năng Giỏ hàng (Native Shopping) hay không
+            unique_ids = set(re.findall(r'"(?:shoppingId|productId)"\s*:\s*"([^"]{5,30})"', clean_html))
+            json_merchants = re.findall(r'"(?:merchantName|storeName)"\s*:\s*"([^"]+)"', clean_html)
+            has_renderers = bool(re.search(r'"(?:merchShelfItemRenderer|shoppingCarouselItemRenderer|productListItemRenderer|shoppingPanelRenderer|productCarouselRenderer|commerceProductRenderer|shoppingAttachmentRenderer|shoppingMessageRenderer)"', clean_html))
             
             has_native_shopping = bool(unique_ids) or bool(json_merchants) or has_renderers
             
@@ -236,7 +236,7 @@ async def fetch_html_and_extract_links(session_http, video_data, semaphore):
             
             # LỚP BẢO VỆ 2: NẾU KHÔNG CÓ GIỎ HÀNG THẬT -> XOÁ SẠCH MỌI LINK
             if not has_native_shopping:
-                ecommerce_items =[]
+                ecommerce_items = []
             else:
                 shopee_c = sum(1 for i in ecommerce_items if i['platform'] == 'Shopee')
                 lazada_c = sum(1 for i in ecommerce_items if i['platform'] == 'Lazada')
