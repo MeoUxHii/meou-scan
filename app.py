@@ -208,11 +208,11 @@ async def fetch_html_and_extract_links(session_http, video_data, semaphore):
             
             clean_html = html_content
             
-            # LỚP BẢO VỆ 1: Tiêu huỷ văn bản thô. 
-            clean_html = re.sub(r'<meta[^>]*>', '', clean_html)
-            clean_html = re.sub(r'"text"\s*:\s*"(?:[^"\\]|\\.)*"', '""', clean_html)
-            clean_html = re.sub(r'"content"\s*:\s*"(?:[^"\\]|\\.)*"', '""', clean_html)
-            clean_html = re.sub(r'"simpleText"\s*:\s*"(?:[^"\\]|\\.)*"', '""', clean_html)
+            # ĐÃ TẮT LỚP BẢO VỆ 1: Tránh xoá nhầm cấu trúc JSON mới của YouTube chứa link giỏ hàng
+            # clean_html = re.sub(r'<meta[^>]*>', '', clean_html)
+            # clean_html = re.sub(r'"text"\s*:\s*"(?:[^"\\]|\\.)*"', '""', clean_html)
+            # clean_html = re.sub(r'"content"\s*:\s*"(?:[^"\\]|\\.)*"', '""', clean_html)
+            # clean_html = re.sub(r'"simpleText"\s*:\s*"(?:[^"\\]|\\.)*"', '""', clean_html)
 
             raw_links = {}
             for p in LINK_PATTERNS:
@@ -223,10 +223,15 @@ async def fetch_html_and_extract_links(session_http, video_data, semaphore):
                     
             ecommerce_items =[{"clean_url": k, "platform": v} for k, v in raw_links.items()]
             
-            # CẬP NHẬT: Xác định chắc chắn 100% video này có tính năng Giỏ hàng (Native Shopping) hay không
+            # CẬP NHẬT: Tìm kiếm theo từ khóa mảng rộng để tăng tỷ lệ chính xác
+            shopping_keywords = [
+                "shoppingPanelRenderer", "commerceProductRenderer", "shoppingCarouselItemRenderer",
+                "productListItemRenderer", "merchShelfItemRenderer", "shoppingAttachmentRenderer",
+                "shoppingMessageRenderer", "engagement-panel-shopping", "ENGAGEMENT_PANEL_SURFACE_SHOPPING"
+            ]
+            has_renderers = any(kw in clean_html for kw in shopping_keywords)
             unique_ids = set(re.findall(r'"(?:shoppingId|productId)"\s*:\s*"([^"]{5,30})"', clean_html))
             json_merchants = re.findall(r'"(?:merchantName|storeName)"\s*:\s*"([^"]+)"', clean_html)
-            has_renderers = bool(re.search(r'"(?:merchShelfItemRenderer|shoppingCarouselItemRenderer|productListItemRenderer|shoppingPanelRenderer|productCarouselRenderer|commerceProductRenderer|shoppingAttachmentRenderer|shoppingMessageRenderer)"', clean_html))
             
             has_native_shopping = bool(unique_ids) or bool(json_merchants) or has_renderers
             
@@ -269,7 +274,13 @@ async def fetch_html_and_extract_links(session_http, video_data, semaphore):
 async def process_all_urls(urls, start_date, end_date):
     candidate_ids =[]
     final_channel_name = "MeoU"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    
+    # BỔ SUNG COOKIE CONSENT VÀ HEADER CHUẨN ĐỂ VƯỢT CHẶN BOT CỦA GOOGLE TRÊN SERVER CLOUD
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Cookie": "CONSENT=YES+cb.20230501-14-p0.en+FX+478"
+    }
     
     async with aiohttp.ClientSession(headers=headers) as session_http:
         for u in urls:
