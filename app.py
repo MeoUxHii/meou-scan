@@ -99,23 +99,26 @@ def extract_video_id(url):
 def check_native_shopping(html_content):
     """
     Kiểm tra xem HTML có chứa các cờ (flags) của tính năng Giỏ hàng (Native Shopping) hay không.
-    Các cờ này được cập nhật dựa trên cấu trúc ytInitialData mới nhất của YouTube.
+    Đã được mở rộng để bắt các từ khóa ẩn sâu trong ytInitialData.
     """
     indicators = [
-        '"shoppingOverlayRenderer"',        # Thường dùng trên Shorts
-        '"shoppingPanelRenderer"',          # Bảng điều khiển mua sắm
-        '"productCarouselRenderer"',        # Băng chuyền sản phẩm
-        '"shoppingCarouselItemRenderer"',   # Item trong băng chuyền
-        '"productListItemRenderer"',        # Danh sách sản phẩm dọc
-        '"engagementPanelShopping"',        # Tính năng mua sắm trong khung tương tác
-        '"shoppingResources"'               # Resource mua sắm
+        '"shoppingOverlayRenderer"',        
+        '"shoppingPanelRenderer"',          
+        '"productCarouselRenderer"',        
+        '"shoppingCarouselItemRenderer"',   
+        '"productListItemRenderer"',        
+        '"productListEntryRenderer"',       # Định dạng List mới
+        '"engagementPanelShopping"',        
+        '"shoppingResources"',
+        '"merchantName"',                   # Chắc chắn có tên Sàn/Shop
+        '"offerPrice"',                     # Chắc chắn có Giá tiền
+        '"shoppingAction"'                  # Nút hành động
     ]
     
     for indicator in indicators:
         if indicator in html_content:
             return True
             
-    # Dự phòng thêm cách check cũ (nhỡ YT dùng lại)
     if re.search(r'"shoppingId"\s*:\s*"([^"]{5,30})"', html_content):
         return True
         
@@ -185,7 +188,6 @@ async def fetch_html_and_extract_links(session_http, video_data, semaphore):
             current_type = video_data['type']
             html_content = ""
             
-            # Ưu tiên fetch giao diện Shorts (Vì UI giỏ hàng của Shorts dễ bóc tách hơn)
             async with session_http.get(shorts_url, allow_redirects=False, timeout=10) as resp:
                 if resp.status == 200:
                     video_data['type'] = 'Short'
@@ -196,7 +198,6 @@ async def fetch_html_and_extract_links(session_http, video_data, semaphore):
                         video_data['type'] = 'Video'
                     video_data['url'] = f"https://www.youtube.com/watch?v={vid}"
             
-            # Nếu không phải Shorts, fetch giao diện Video thường
             if not html_content:
                 async with session_http.get(video_data['url'], timeout=10) as resp:
                     html_content = await resp.text()
@@ -205,10 +206,9 @@ async def fetch_html_and_extract_links(session_http, video_data, semaphore):
                 if re.search(r'"isPremiere"\s*:\s*true', html_content) or 'BADGE_STYLE_TYPE_PREMIERE' in html_content:
                     video_data['type'] = 'Video'
             
-            # BƯỚC 1: Kiểm tra xem video CÓ giỏ hàng (Native Shopping) hay không trước
+            # Kiểm tra xem có giỏ hàng Native không
             has_native_shopping = check_native_shopping(html_content)
             
-            # Nếu KHÔNG có giỏ hàng, trả về kết quả 0 luôn cho nhanh, không cần regex mất thời gian
             if not has_native_shopping:
                 video_data.update({
                     'has_shopping': False,
@@ -220,17 +220,11 @@ async def fetch_html_and_extract_links(session_http, video_data, semaphore):
                 })
                 return video_data
 
-            # BƯỚC 2: Nếu CÓ giỏ hàng native, tiến hành bóc tách link
-            clean_html = html_content
-            # Lọc bỏ bớt text mô tả/comment để tránh bắt nhầm link rác
-            clean_html = re.sub(r'<meta[^>]*>', '', clean_html)
-            clean_html = re.sub(r'"text"\s*:\s*"(?:[^"\\]|\\.)*"', '""', clean_html)
-            clean_html = re.sub(r'"content"\s*:\s*"(?:[^"\\]|\\.)*"', '""', clean_html)
-            clean_html = re.sub(r'"simpleText"\s*:\s*"(?:[^"\\]|\\.)*"', '""', clean_html)
-
+            # BƯỚC 2: Bóc tách link và Tên Shop (Merchant Name)
             raw_links = {}
+            # Regex trực tiếp trên html_content. Đừng xóa bỏ các thẻ "text" hay "content" nữa vì sẽ làm hỏng JSON của Giỏ hàng.
             for p in LINK_PATTERNS:
-                for m in p.findall(clean_html):
+                for m in p.findall(html_content):
                     clean_data = get_clean_ecommerce_url(m)
                     if clean_data and clean_data['url'] not in raw_links:
                         raw_links[clean_data['url']] = clean_data['platform']
@@ -241,15 +235,32 @@ async def fetch_html_and_extract_links(session_http, video_data, semaphore):
             lazada_c = sum(1 for i in ecommerce_items if i['platform'] == 'Lazada')
             other_c = sum(1 for i in ecommerce_items if i['platform'] == 'Other')
             
-            # Nếu là Native Shopping nhưng tool không bóc được link Shopee/Lazada (có thể do YT mã hóa sâu quá),
-            # chúng ta vẫn set total_other_count tối thiểu là 1 để người dùng biết "Có sản phẩm bên trong".
-            total_other_count = other_c if (shopee_c > 0 or lazada_c > 0 or other_c > 0) else 1
+            # CƠ CHẾ DỰ PHÒNG CHỐNG YOUTUBE ẨN URL (URL OBFUSCATION)
+            # Lọc trực tiếp tên Shop từ merchantName
+            unique_merchants = set([m.strip() for m in re.findall(r'"merchantName"\s*:\s*"([^"]+)"', html_content)])
+            merchant_shopee_c = 0
+            merchant_lazada_c = 0
+            merchant_other_c = 0
+            
+            for m in unique_merchants:
+                ml = m.lower()
+                if 'shopee' in ml: merchant_shopee_c += 1
+                elif 'lazada' in ml or 'lzd' in ml: merchant_lazada_c += 1
+                elif 'tiktok' in ml or 'tiki' in ml: merchant_other_c += 1
+                else: merchant_other_c += 1
+                
+            # Tổng hợp: Cái nào đếm ra nhiều hơn thì lấy, để đảm bảo không bị sót nếu YT mã hóa Link URL
+            final_shopee_c = max(shopee_c, merchant_shopee_c)
+            final_lazada_c = max(lazada_c, merchant_lazada_c)
+            final_other_c = max(other_c, merchant_other_c)
+            
+            total_other_count = final_other_c if (final_shopee_c > 0 or final_lazada_c > 0 or final_other_c > 0) else 1
 
             video_data.update({
-                'has_shopping': True, # Đã check qua hàm check_native_shopping ở trên
+                'has_shopping': True,
                 'shopping_links': ecommerce_items,
-                'shopee_count': shopee_c,
-                'lazada_count': lazada_c,
+                'shopee_count': final_shopee_c,
+                'lazada_count': final_lazada_c,
                 'other_count': total_other_count,
                 'status': 'success'
             })
@@ -263,7 +274,12 @@ async def fetch_html_and_extract_links(session_http, video_data, semaphore):
 async def process_all_urls(urls, start_date, end_date):
     candidate_ids =[]
     final_channel_name = "MeoU"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    
+    # Bổ sung Accept-Language để lấy đúng mã ngôn ngữ/JSON của YT như người dùng thật ở VN
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7"
+    }
     
     async with aiohttp.ClientSession(headers=headers) as session_http:
         for u in urls:
